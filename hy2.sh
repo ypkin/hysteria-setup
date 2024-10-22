@@ -7,9 +7,9 @@ RESET="\e[0m"    # 重置颜色
 
 # 选择操作
 echo -e "${GREEN}请选择操作:${RESET}"
-echo -e "${GREEN}1) 安装域名证书并设置 Hysteria${RESET}"
-echo -e "${GREEN}2) 修改 Hysteria 配置文件${RESET}"
-echo -e "${GREEN}3) 输出当前 Hysteria 配置内容${RESET}"
+echo -e "${GREEN}1) 域名证书安装 Hysteria${RESET}"
+echo -e "${GREEN}2) 修改 Hysteria 配置${RESET}"
+echo -e "${GREEN}3) 输出当前 Hysteria 配置${RESET}"
 echo -e "${GREEN}4) 查看 Hysteria 运行状态${RESET}"
 echo -e "${GREEN}5) 重启 Hysteria${RESET}"
 echo -e "${GREEN}6) 停止 Hysteria${RESET}"
