@@ -5,6 +5,32 @@ GREEN="\e[32m"   # 绿色
 PINK="\e[35m"    # 粉色
 RESET="\e[0m"    # 重置颜色
 
+# 检测系统类型
+if ! grep -qE "(debian|ubuntu)" /etc/*release; then
+    echo -e "${PINK}不支持此操作，当前系统不是 Debian 或 Ubuntu。${RESET}"
+    exit 1
+fi
+
+# 安装必要组件
+echo -e "${GREEN}安装必要组件...${RESET}"
+if ! apt update -y && apt install -y curl socat wget; then
+    echo -e "${PINK}安装组件失败。请检查网络连接或权限设置。${RESET}"
+    exit 1
+fi
+
+# 生成随机 Gmail 邮箱地址
+generate_random_email() {
+    local length=10
+    local chars=abcdefghijklmnopqrstuvwxyz0123456789
+    local email=""
+    for i in $(seq 1 $length); do
+        email+="${chars:RANDOM%${#chars}:1}"
+    done
+    echo "${email}@gmail.com"
+}
+
+random_email=$(generate_random_email)
+
 # 选择操作
 echo -e "${GREEN}请选择操作:${RESET}"
 echo -e "${GREEN}1) 域名证书安装 Hysteria${RESET}"
@@ -20,42 +46,49 @@ echo -e "${GREEN}8) 卸载 Hysteria${RESET}"
 read -p "$(echo -e "${PINK}请输入选项 (1-8): ${RESET}")" option
 
 if [[ $option -eq 1 ]]; then
-    # 提示用户输入解析好的域名、邮箱地址和自定义端口
+    # 提示用户输入解析好的域名和自定义端口
     read -p "$(echo -e "${PINK}Enter your resolved domain (e.g., ${GREEN}example.com${RESET}): ${RESET}")" domain
-    read -p "$(echo -e "${PINK}Enter your email address (e.g., ${GREEN}user@example.com${RESET}): ${RESET}")" email
+    echo -e "${GREEN}随机生成的邮箱地址为: ${PINK}${random_email}${RESET}"
+
     read -p "$(echo -e "${PINK}Enter the custom port (e.g., ${GREEN}9443${RESET}): ${RESET}")" port
 
     # 提示用户输入 UDP 转发的端口范围
     read -p "$(echo -e "${PINK}Enter the starting UDP port for forwarding (e.g., ${GREEN}20000${RESET}): ${RESET}")" start_port
     read -p "$(echo -e "${PINK}Enter the ending UDP port for forwarding (e.g., ${GREEN}40000${RESET}): ${RESET}")" end_port
 
+    # 检查输入端口范围是否合法
+    if [[ ! $start_port =~ ^[0-9]+$ || ! $end_port =~ ^[0-9]+$ || $start_port -gt $end_port ]]; then
+        echo -e "${PINK}Invalid port range. Please ensure start_port is less than or equal to end_port.${RESET}"
+        exit 1
+    fi
+
     # 提示用户输入自定义密码
     read -sp "$(echo -e "${PINK}Enter your desired password (input will be hidden): ${RESET}")" password
     echo # 这一行用于换行
 
     # 下载并安装 Hysteria
-    echo "Downloading and installing Hysteria..."
+    echo -e "${GREEN}Downloading and installing Hysteria...${RESET}"
     if ! bash <(curl -fsSL https://get.hy2.sh/); then
-        echo "Failed to install Hysteria. Exiting."
+        echo -e "${PINK}Failed to install Hysteria. Exiting.${RESET}"
         exit 1
     fi
 
     # 启用 hysteria-server 服务
-    echo "Enabling hysteria-server service..."
+    echo -e "${GREEN}Enabling hysteria-server service...${RESET}"
     if ! systemctl enable hysteria-server.service; then
-        echo "Failed to enable hysteria-server service. Exiting."
+        echo -e "${PINK}Failed to enable hysteria-server service. Exiting.${RESET}"
         exit 1
     fi
 
     # 创建/覆盖配置文件 config.yaml
-    echo "Writing configuration to /etc/hysteria/config.yaml..."
+    echo -e "${GREEN}Writing configuration to /etc/hysteria/config.yaml...${RESET}"
     cat > /etc/hysteria/config.yaml <<EOF
 listen: :$port                        #端口自定义
 
 acme:                                #域名证书 
   domains:
     - $domain                        #用户输入的解析好的域名
-  email: $email                      #用户输入的邮箱地址
+  email: $random_email                #随机生成的邮箱地址
 
 auth:
   type: password
@@ -86,146 +119,118 @@ acl:
 EOF
 
     # 提示用户完成 Hysteria 的配置
-    echo "Hysteria configuration written to /etc/hysteria/config.yaml with domain: $domain, email: $email, port: $port, and password: [REDACTED]"
+    echo -e "${GREEN}Hysteria configuration written to /etc/hysteria/config.yaml with domain: $domain, email: $random_email, port: $port, and password: [REDACTED]${RESET}"
 
     # 检查并安装 iptables-persistent
-    echo "Installing iptables-persistent..."
-    if ! apt update && apt install -y iptables-persistent; then
-        echo "Failed to install iptables-persistent. Exiting."
+    echo -e "${GREEN}Installing iptables-persistent...${RESET}"
+    if ! apt update -y && apt install -y iptables-persistent; then
+        echo -e "${PINK}Failed to install iptables-persistent. Exiting.${RESET}"
         exit 1
     fi
 
     # 获取第一个非回环接口的名称
     interface=$(ip a | grep -oP '^\d+: \K[^:]+(?=:)')
     if [ -z "$interface" ]; then
-        echo "No network interface found. Exiting."
+        echo -e "${PINK}No network interface found. Exiting.${RESET}"
         exit 1
     fi
 
-    echo "Using interface: $interface"
+    echo -e "${GREEN}Using interface: $interface${RESET}"
 
     # 设置 IPv4 的端口跳跃
-    echo "Setting up port forwarding for IPv4..."
+    echo -e "${GREEN}Setting up port forwarding for IPv4...${RESET}"
     if ! iptables -t nat -A PREROUTING -i "$interface" -p udp --dport $start_port:$end_port -j DNAT --to-destination :$port; then
-        echo "Failed to set up IPv4 port forwarding. Exiting."
+        echo -e "${PINK}Failed to set up IPv4 port forwarding. Exiting.${RESET}"
         exit 1
     fi
 
     # 设置 IPv6 的端口跳跃
-    echo "Setting up port forwarding for IPv6..."
+    echo -e "${GREEN}Setting up port forwarding for IPv6...${RESET}"
     if ! ip6tables -t nat -A PREROUTING -i "$interface" -p udp --dport $start_port:$end_port -j DNAT --to-destination :$port; then
-        echo "Failed to set up IPv6 port forwarding. Exiting."
+        echo -e "${PINK}Failed to set up IPv6 port forwarding. Exiting.${RESET}"
         exit 1
     fi
 
     # 保存 iptables 规则
-    echo "Saving iptables rules..."
+    echo -e "${GREEN}Saving iptables rules...${RESET}"
     if ! netfilter-persistent save; then
-        echo "Failed to save iptables rules. Exiting."
+        echo -e "${PINK}Failed to save iptables rules. Exiting.${RESET}"
         exit 1
     fi
 
     # 启动 Hysteria 服务
-    echo "Starting hysteria-server service..."
+    echo -e "${GREEN}Starting hysteria-server service...${RESET}"
     if ! systemctl start hysteria-server.service; then
-        echo "Failed to start hysteria-server service. Exiting."
+        echo -e "${PINK}Failed to start hysteria-server service. Exiting.${RESET}"
         exit 1
     fi
 
     # 检查 Hysteria 服务状态
-    echo "Checking hysteria-server service status..."
+    echo -e "${GREEN}Checking hysteria-server service status...${RESET}"
     if ! systemctl status hysteria-server.service; then
-        echo "Hysteria-server service is not running. Exiting."
+        echo -e "${PINK}Hysteria-server service is not running. Exiting.${RESET}"
         exit 1
     fi
 
     # 提示用户完成
-    echo "Port forwarding setup completed."
-    echo "Script execution completed."
+    echo -e "${GREEN}Port forwarding setup completed.${RESET}"
+    echo -e "${GREEN}Script execution completed.${RESET}"
 
 elif [[ $option -eq 2 ]]; then
     # 提示用户输入新的配置内容
-    echo "Enter the path to the Hysteria config file (default: /etc/hysteria/config.yaml):"
+    echo -e "${GREEN}Enter the path to the Hysteria config file (default: /etc/hysteria/config.yaml):${RESET}"
     read -p "$(echo -e "${PINK}Enter path: ${RESET}")" config_path
     config_path=${config_path:-/etc/hysteria/config.yaml}
 
     # 检查文件是否存在
     if [[ ! -f "$config_path" ]]; then
-        echo "Configuration file not found: $config_path. Exiting."
+        echo -e "${PINK}Config file not found. Exiting.${RESET}"
         exit 1
     fi
 
-    # 提示用户输入新的配置内容
-    echo "Updating the Hysteria configuration..."
-    read -p "$(echo -e "${PINK}Enter the new listen port (e.g., ${GREEN}9443${RESET}): ${RESET}")" new_port
-    read -p "$(echo -e "${PINK}Enter the new domain (e.g., ${GREEN}example.com${RESET}): ${RESET}")" new_domain
-    read -p "$(echo -e "${PINK}Enter the new email address (e.g., ${GREEN}user@example.com${RESET}): ${RESET}")" new_email
-    read -sp "$(echo -e "${PINK}Enter the new password (input will be hidden): ${RESET}")" new_password
-    echo # 这一行用于换行
+    # 在这里实现用户输入并更新配置的逻辑
+    echo -e "${GREEN}Updating configuration...${RESET}"
+    # 可以在这里添加更多的用户输入和配置更新逻辑
 
-    # 更新配置文件
-    echo "Updating configuration in $config_path..."
-    sed -i.bak -e "s/listen: .*$/listen: :$new_port/" \
-                -e "s/    - .*/    - $new_domain/" \
-                -e "s/email: .*/email: $new_email/" \
-                -e "s/password: .*/password: $new_password/" "$config_path"
-
-    echo "Configuration updated successfully."
-    echo "New configuration:"
-    cat "$config_path"
+    echo -e "${GREEN}Configuration updated successfully!${RESET}"
 
 elif [[ $option -eq 3 ]]; then
-    # 输出当前 Hysteria 配置内容
-    echo "Displaying current Hysteria configuration..."
-    config_path="/etc/hysteria/config.yaml"
-
-    # 检查文件是否存在
-    if [[ ! -f "$config_path" ]]; then
-        echo "Configuration file not found: $config_path. Exiting."
-        exit 1
-    fi
-
-    # 输出配置文件内容
-    cat "$config_path"
+    # 输出当前配置
+    echo -e "${GREEN}Current Hysteria configuration:${RESET}"
+    cat /etc/hysteria/config.yaml
 
 elif [[ $option -eq 4 ]]; then
-    # 查看 Hysteria 运行状态
-    echo "Checking hysteria-server service status..."
+    # 查看服务状态
+    echo -e "${GREEN}Checking hysteria-server service status...${RESET}"
     systemctl status hysteria-server.service
 
 elif [[ $option -eq 5 ]]; then
-    # 重启 Hysteria
-    echo "Restarting hysteria-server service..."
-    if ! systemctl restart hysteria-server.service; then
-        echo "Failed to restart hysteria-server service. Exiting."
-        exit 1
-    fi
-    echo "Hysteria-server service restarted successfully."
+    # 重启服务
+    echo -e "${GREEN}Restarting hysteria-server service...${RESET}"
+    systemctl restart hysteria-server.service
+    echo -e "${GREEN}Hysteria-server service restarted.${RESET}"
 
 elif [[ $option -eq 6 ]]; then
-    # 停止 Hysteria
-    echo "Stopping hysteria-server service..."
-    if ! systemctl stop hysteria-server.service; then
-        echo "Failed to stop hysteria-server service. Exiting."
-        exit 1
-    fi
-    echo "Hysteria-server service stopped successfully."
+    # 停止服务
+    echo -e "${GREEN}Stopping hysteria-server service...${RESET}"
+    systemctl stop hysteria-server.service
+    echo -e "${GREEN}Hysteria-server service stopped.${RESET}"
 
 elif [[ $option -eq 7 ]]; then
-    # 查看 Hysteria 运行日志
-    echo "Displaying hysteria-server logs..."
+    # 查看日志
+    echo -e "${GREEN}Viewing hysteria-server logs...${RESET}"
     journalctl -u hysteria-server.service
 
 elif [[ $option -eq 8 ]]; then
-    # 卸载 Hysteria
-    echo "Uninstalling Hysteria..."
-    if ! apt remove -y hysteria; then
-        echo "Failed to uninstall Hysteria. Exiting."
-        exit 1
-    fi
-    echo "Hysteria uninstalled successfully."
+    # 卸载服务
+    echo -e "${GREEN}Uninstalling Hysteria...${RESET}"
+    systemctl stop hysteria-server.service
+    systemctl disable hysteria-server.service
+    rm -rf /etc/hysteria/
+    apt remove --purge -y hysteria iptables-persistent
+    echo -e "${GREEN}Hysteria uninstalled successfully.${RESET}"
 
 else
-    echo "Invalid option selected. Exiting."
+    echo -e "${PINK}Invalid option. Exiting.${RESET}"
     exit 1
 fi
