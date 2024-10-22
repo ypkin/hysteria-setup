@@ -139,10 +139,6 @@ EOF
         exit 1
     fi
 
-    # 输出配置文件内容
-    echo "Displaying the configuration file contents:"
-    cat /etc/hysteria/config.yaml
-
     # 提示用户完成
     echo "Port forwarding setup completed."
     echo "Script execution completed."
