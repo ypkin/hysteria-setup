@@ -208,10 +208,7 @@ elif [[ $option -eq 2 ]]; then
             echo # 换行
             sed -i "s|password: .*|  password: $new_password|" /etc/hysteria/config.yaml
             ;;
-        4)
-            echo -e "${GREEN}返回主菜单...${RESET}"
-            exit 0
-            ;;
+
         *)
             echo -e "${PINK}无效选项，修改失败。${RESET}"
             exit 1
