@@ -252,3 +252,7 @@ EOF
         continue
     fi
 done
+
+# 脚本运行结束后自动执行选项 4
+echo -e "${GREEN}自动执行选项 4: 检查 Hysteria 服务状态...${RESET}"
+systemctl status hysteria-server.service
