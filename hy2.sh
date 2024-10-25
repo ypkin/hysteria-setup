@@ -47,60 +47,50 @@ read -p "$(echo -e "${PINK}请输入选项 (1-8): ${RESET}")" option
 
 if [[ $option -eq 1 ]]; then
     # 提示用户输入解析好的域名和自定义端口
-    read -p "$(echo -e "${PINK}Enter your resolved domain (e.g., ${GREEN}example.com${RESET}): ${RESET}")" domain
+    read -p "$(echo -e "${PINK}输入解析好的域名 (例如 ${GREEN}example.com${RESET}): ${RESET}")" domain
     echo -e "${GREEN}随机生成的邮箱地址为: ${PINK}${random_email}${RESET}"
 
-    read -p "$(echo -e "${PINK}Enter the custom port (e.g., ${GREEN}9443${RESET}): ${RESET}")" port
-
-    # 提示用户输入 UDP 转发的端口范围
-    read -p "$(echo -e "${PINK}Enter the starting UDP port for forwarding (e.g., ${GREEN}20000${RESET}): ${RESET}")" start_port
-    read -p "$(echo -e "${PINK}Enter the ending UDP port for forwarding (e.g., ${GREEN}40000${RESET}): ${RESET}")" end_port
-
-    # 检查输入端口范围是否合法
-    if [[ ! $start_port =~ ^[0-9]+$ || ! $end_port =~ ^[0-9]+$ || $start_port -gt $end_port ]]; then
-        echo -e "${PINK}Invalid port range. Please ensure start_port is less than or equal to end_port.${RESET}"
-        exit 1
-    fi
+    read -p "$(echo -e "${PINK}输入自定义端口 (例如 ${GREEN}9443${RESET}): ${RESET}")" port
 
     # 提示用户输入自定义密码
-    read -sp "$(echo -e "${PINK}Enter your desired password (input will be hidden): ${RESET}")" password
-    echo # 这一行用于换行
+    read -sp "$(echo -e "${PINK}输入您希望的密码 (输入将被隐藏): ${RESET}")" password
+    echo # 换行
 
     # 下载并安装 Hysteria
-    echo -e "${GREEN}Downloading and installing Hysteria...${RESET}"
+    echo -e "${GREEN}正在下载并安装 Hysteria...${RESET}"
     if ! bash <(curl -fsSL https://get.hy2.sh/); then
-        echo -e "${PINK}Failed to install Hysteria. Exiting.${RESET}"
+        echo -e "${PINK}安装 Hysteria 失败。退出中...${RESET}"
         exit 1
     fi
 
     # 启用 hysteria-server 服务
-    echo -e "${GREEN}Enabling hysteria-server service...${RESET}"
+    echo -e "${GREEN}启用 hysteria-server 服务...${RESET}"
     if ! systemctl enable hysteria-server.service; then
-        echo -e "${PINK}Failed to enable hysteria-server service. Exiting.${RESET}"
+        echo -e "${PINK}启用 hysteria-server 服务失败。退出中...${RESET}"
         exit 1
     fi
 
     # 创建/覆盖配置文件 config.yaml
-    echo -e "${GREEN}Writing configuration to /etc/hysteria/config.yaml...${RESET}"
+    echo -e "${GREEN}正在写入配置到 /etc/hysteria/config.yaml...${RESET}"
     cat > /etc/hysteria/config.yaml <<EOF
-listen: :$port                        #端口自定义
+listen: :$port                        # 端口自定义
 
-acme:                                #域名证书 
+acme:                                # 域名证书 
   domains:
-    - $domain                        #用户输入的解析好的域名
-  email: $random_email                #随机生成的邮箱地址
+    - $domain                        # 用户输入的解析好的域名
+  email: $random_email                # 随机生成的邮箱地址
 
 auth:
   type: password
-  password: $password                 #用户输入的自定义密码
+  password: $password                 # 用户输入的自定义密码
 
 masquerade:
   type: proxy
   proxy:
-    url: https://bing.com            #伪装网站
+    url: https://bing.com            # 伪装网站
     rewriteHost: true
 
-outbounds:                           #出站端口设置
+outbounds:                           # 出站端口设置
   - name: v4
     type: direct
     direct:
@@ -111,126 +101,154 @@ outbounds:                           #出站端口设置
       mode: 6
 
 acl:
-  inline:                            #内置出站规则，从上到下优先出站
-   - v4(geosite:netflix)             #v4解锁nf
-   - v6(::/0)                        #v6分流
-   - v4(0.0.0.0/0)                   #v4分流
-   - direct(all)                     #其它直连出站
+  inline:                            # 内置出站规则，从上到下优先出站
+   - v4(geosite:netflix)             # v4 解锁 Netflix
+   - v6(::/0)                        # v6 分流
+   - v4(0.0.0.0/0)                   # v4 分流
+   - direct(all)                     # 其它直连出站
 EOF
 
     # 提示用户完成 Hysteria 的配置
-    echo -e "${GREEN}Hysteria configuration written to /etc/hysteria/config.yaml with domain: $domain, email: $random_email, port: $port, and password: [REDACTED]${RESET}"
+    echo -e "${GREEN}Hysteria 配置已写入到 /etc/hysteria/config.yaml，域名: $domain, 邮箱: $random_email, 端口: $port, 密码: [已隐藏]${RESET}"
 
-    # 检查并安装 iptables-persistent
-    echo -e "${GREEN}Installing iptables-persistent...${RESET}"
-    if ! apt update -y && apt install -y iptables-persistent; then
-        echo -e "${PINK}Failed to install iptables-persistent. Exiting.${RESET}"
+    # 自动检测网卡名称，假设 eth0 是默认网卡名称
+    NIC=$(ip -o link show | awk -F': ' '{print $2}' | grep -E "eth|ens" | head -n 1)
+
+    if [ -z "$NIC" ]; then
+        echo -e "${PINK}未能找到网卡名称，请手动设置！${RESET}"
         exit 1
     fi
 
-    # 获取第一个非回环接口的名称
-    interface=$(ip a | grep -oP '^\d+: \K[^:]+(?=:)')
-    if [ -z "$interface" ]; then
-        echo -e "${PINK}No network interface found. Exiting.${RESET}"
+    echo -e "${GREEN}检测到的网卡名称为: $NIC${RESET}"
+
+    # 提示用户输入端口范围和目标端口
+    read -p "$(echo -e "${PINK}请输入跳跃端口范围的起始端口 (例如 20000): ${RESET}")" START_PORT
+    read -p "$(echo -e "${PINK}请输入跳跃端口范围的结束端口 (例如 40000): ${RESET}")" END_PORT
+    read -p "$(echo -e "${PINK}请输入目标端口 (例如 9443): ${RESET}")" TARGET_PORT
+
+    # 检查端口输入是否有效
+    if [[ ! "$START_PORT" =~ ^[0-9]+$ || ! "$END_PORT" =~ ^[0-9]+$ || ! "$TARGET_PORT" =~ ^[0-9]+$ ]]; then
+        echo -e "${PINK}输入无效，端口必须为数字。${RESET}"
         exit 1
     fi
 
-    echo -e "${GREEN}Using interface: $interface${RESET}"
-
-    # 设置 IPv4 的端口跳跃
-    echo -e "${GREEN}Setting up port forwarding for IPv4...${RESET}"
-    if ! iptables -t nat -A PREROUTING -i "$interface" -p udp --dport $start_port:$end_port -j DNAT --to-destination :$port; then
-        echo -e "${PINK}Failed to set up IPv4 port forwarding. Exiting.${RESET}"
+    # 检查起始端口和结束端口的大小关系
+    if [[ "$START_PORT" -ge "$END_PORT" ]]; then
+        echo -e "${PINK}起始端口必须小于结束端口。${RESET}"
         exit 1
     fi
 
-    # 设置 IPv6 的端口跳跃
-    echo -e "${GREEN}Setting up port forwarding for IPv6...${RESET}"
-    if ! ip6tables -t nat -A PREROUTING -i "$interface" -p udp --dport $start_port:$end_port -j DNAT --to-destination :$port; then
-        echo -e "${PINK}Failed to set up IPv6 port forwarding. Exiting.${RESET}"
-        exit 1
-    fi
+    # 清除旧的 iptables 规则（避免重复添加）
+    echo "清除已有的端口跳跃规则..."
+    iptables -t nat -D PREROUTING -i "$NIC" -p udp --dport "$START_PORT:$END_PORT" -j DNAT --to-destination :"$TARGET_PORT" 2>/dev/null
+    ip6tables -t nat -D PREROUTING -i "$NIC" -p udp --dport "$START_PORT:$END_PORT" -j DNAT --to-destination :"$TARGET_PORT" 2>/dev/null
 
-    # 保存 iptables 规则
-    echo -e "${GREEN}Saving iptables rules...${RESET}"
-    if ! netfilter-persistent save; then
-        echo -e "${PINK}Failed to save iptables rules. Exiting.${RESET}"
-        exit 1
-    fi
+    # 安装 iptables-persistent
+    echo "安装 iptables-persistent..."
+    apt update
+    apt install -y iptables-persistent
+
+    # 设置 IPv4 和 IPv6 的 iptables 规则
+    echo "设置端口跳跃规则 ($START_PORT-$END_PORT -> $TARGET_PORT)..."
+
+    # IPv4 规则
+    iptables -t nat -A PREROUTING -i "$NIC" -p udp --dport "$START_PORT:$END_PORT" -j DNAT --to-destination :"$TARGET_PORT"
+    # IPv6 规则
+    ip6tables -t nat -A PREROUTING -i "$NIC" -p udp --dport "$START_PORT:$END_PORT" -j DNAT --to-destination :"$TARGET_PORT"
+
+    # 保存规则
+    echo "保存 iptables 规则..."
+    netfilter-persistent save
+
+    # 重启 iptables 服务
+    echo "重启 iptables 服务..."
+    systemctl restart netfilter-persistent
+
+    echo -e "${GREEN}端口跳跃规则已成功设置，iptables 服务已重启。${RESET}"
 
     # 启动 Hysteria 服务
-    echo -e "${GREEN}Starting hysteria-server service...${RESET}"
+    echo -e "${GREEN}启动 hysteria-server 服务...${RESET}"
     if ! systemctl start hysteria-server.service; then
-        echo -e "${PINK}Failed to start hysteria-server service. Exiting.${RESET}"
+        echo -e "${PINK}启动 hysteria-server 服务失败。退出中...${RESET}"
         exit 1
     fi
 
     # 检查 Hysteria 服务状态
-    echo -e "${GREEN}Checking hysteria-server service status...${RESET}"
+    echo -e "${GREEN}检查 hysteria-server 服务状态...${RESET}"
     if ! systemctl status hysteria-server.service; then
-        echo -e "${PINK}Hysteria-server service is not running. Exiting.${RESET}"
+        echo -e "${PINK}Hysteria 服务未正常运行，请检查配置文件或日志。${RESET}"
         exit 1
     fi
 
-    # 提示用户完成
-    echo -e "${GREEN}Port forwarding setup completed.${RESET}"
-    echo -e "${GREEN}Script execution completed.${RESET}"
+    echo -e "${GREEN}Hysteria 服务已成功启动！${RESET}"
 
 elif [[ $option -eq 2 ]]; then
-    # 提示用户输入新的配置内容
-    echo -e "${GREEN}Enter the path to the Hysteria config file (default: /etc/hysteria/config.yaml):${RESET}"
-    read -p "$(echo -e "${PINK}Enter path: ${RESET}")" config_path
-    config_path=${config_path:-/etc/hysteria/config.yaml}
+    echo -e "${GREEN}当前 Hysteria 配置: ${RESET}"
+    cat /etc/hysteria/config.yaml
 
-    # 检查文件是否存在
-    if [[ ! -f "$config_path" ]]; then
-        echo -e "${PINK}Config file not found. Exiting.${RESET}"
-        exit 1
-    fi
+    echo -e "${GREEN}请选择要修改的项:${RESET}"
+    echo -e "${GREEN}1) 域名${RESET}"
+    echo -e "${GREEN}2) 端口${RESET}"
+    echo -e "${GREEN}3) 密码${RESET}"
 
-    # 在这里实现用户输入并更新配置的逻辑
-    echo -e "${GREEN}Updating configuration...${RESET}"
-    # 可以在这里添加更多的用户输入和配置更新逻辑
+    read -p "$(echo -e "${PINK}请输入选项 (1-3): ${RESET}")" modify_option
 
-    echo -e "${GREEN}Configuration updated successfully!${RESET}"
+    case $modify_option in
+        1)
+            read -p "$(echo -e "${PINK}请输入新的域名: ${RESET}")" new_domain
+            sed -i "s|domains:.*|    - $new_domain|" /etc/hysteria/config.yaml
+            ;;
+        2)
+            read -p "$(echo -e "${PINK}请输入新的端口: ${RESET}")" new_port
+            sed -i "s|listen: .*|listen: :$new_port|g" /etc/hysteria/config.yaml
+            ;;
+        3)
+            read -sp "$(echo -e "${PINK}请输入新的密码: ${RESET}")" new_password
+            echo # 换行
+            sed -i "s|password: .*|  password: $new_password|" /etc/hysteria/config.yaml
+            ;;
+        *)
+            echo -e "${PINK}无效选项，修改失败。${RESET}"
+            exit 1
+            ;;
+    esac
+
+    # 重启 Hysteria 服务
+    echo -e "${GREEN}修改已保存，重启 Hysteria 服务...${RESET}"
+    systemctl restart hysteria-server.service
+    echo -e "${GREEN}Hysteria 服务已重启！${RESET}"
 
 elif [[ $option -eq 3 ]]; then
-    # 输出当前配置
-    echo -e "${GREEN}Current Hysteria configuration:${RESET}"
+    echo -e "${GREEN}当前 Hysteria 配置: ${RESET}"
     cat /etc/hysteria/config.yaml
 
 elif [[ $option -eq 4 ]]; then
-    # 查看服务状态
-    echo -e "${GREEN}Checking hysteria-server service status...${RESET}"
+    echo -e "${GREEN}Hysteria 服务状态: ${RESET}"
     systemctl status hysteria-server.service
 
 elif [[ $option -eq 5 ]]; then
-    # 重启服务
-    echo -e "${GREEN}Restarting hysteria-server service...${RESET}"
+    echo -e "${GREEN}重启 Hysteria 服务...${RESET}"
     systemctl restart hysteria-server.service
-    echo -e "${GREEN}Hysteria-server service restarted.${RESET}"
+    echo -e "${GREEN}Hysteria 服务已重启！${RESET}"
 
 elif [[ $option -eq 6 ]]; then
-    # 停止服务
-    echo -e "${GREEN}Stopping hysteria-server service...${RESET}"
+    echo -e "${GREEN}停止 Hysteria 服务...${RESET}"
     systemctl stop hysteria-server.service
-    echo -e "${GREEN}Hysteria-server service stopped.${RESET}"
+    echo -e "${GREEN}Hysteria 服务已停止！${RESET}"
 
 elif [[ $option -eq 7 ]]; then
-    # 查看日志
-    echo -e "${GREEN}Viewing hysteria-server logs...${RESET}"
-    journalctl -u hysteria-server.service
+    echo -e "${GREEN}查看 Hysteria 日志...${RESET}"
+    journalctl -u hysteria-server.service -f
 
 elif [[ $option -eq 8 ]]; then
-    # 卸载服务
-    echo -e "${GREEN}Uninstalling Hysteria...${RESET}"
+    echo -e "${GREEN}卸载 Hysteria...${RESET}"
     systemctl stop hysteria-server.service
     systemctl disable hysteria-server.service
+    apt remove --purge -y hysteria
     rm -rf /etc/hysteria/
-    apt remove --purge -y hysteria iptables-persistent
-    echo -e "${GREEN}Hysteria uninstalled successfully.${RESET}"
+    echo -e "${GREEN}Hysteria 已成功卸载！${RESET}"
 
 else
-    echo -e "${PINK}Invalid option. Exiting.${RESET}"
+    echo -e "${PINK}无效选项，请选择 1 到 8 的数字。${RESET}"
     exit 1
 fi
