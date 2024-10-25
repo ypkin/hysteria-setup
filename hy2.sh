@@ -219,7 +219,7 @@ elif [[ $option -eq 2 ]]; then
     echo -e "${GREEN}Hysteria 服务已重启！${RESET}"
 
 elif [[ $option -eq 3 ]]; then
-    echo -e "${GREEN}当前 Hysteria 配置: ${RESET}"
+    echo -e "${PINK}当前 Hysteria 配置: ${RESET}"
     cat /etc/hysteria/config.yaml
 
 elif [[ $option -eq 4 ]]; then
