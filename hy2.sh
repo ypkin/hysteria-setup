@@ -190,8 +190,9 @@ elif [[ $option -eq 2 ]]; then
     echo -e "${GREEN}1) 域名${RESET}"
     echo -e "${GREEN}2) 端口${RESET}"
     echo -e "${GREEN}3) 密码${RESET}"
+    echo -e "${GREEN}4) 返回主菜单${RESET}"
 
-    read -p "$(echo -e "${PINK}请输入选项 (1-3): ${RESET}")" modify_option
+    read -p "$(echo -e "${PINK}请输入选项 (1-4): ${RESET}")" modify_option
 
     case $modify_option in
         1)
@@ -206,6 +207,10 @@ elif [[ $option -eq 2 ]]; then
             read -sp "$(echo -e "${PINK}请输入新的密码: ${RESET}")" new_password
             echo # 换行
             sed -i "s|password: .*|  password: $new_password|" /etc/hysteria/config.yaml
+            ;;
+        4)
+            echo -e "${GREEN}返回主菜单...${RESET}"
+            exit 0
             ;;
         *)
             echo -e "${PINK}无效选项，修改失败。${RESET}"
