@@ -104,9 +104,8 @@ outbounds:                           # 出站端口设置
 
 acl:
   inline:                            # 内置出站规则，从上到下优先出站
-   - v4(geosite:netflix)             # v4 解锁 Netflix
-   - v6(::/0)                        # v6 分流
    - v4(0.0.0.0/0)                   # v4 分流
+   - v6(::/0)                        # v6分流
    - direct(all)                     # 其它直连出站
 EOF
 
