@@ -92,7 +92,23 @@ masquerade:
     url: https://bing.com            # 伪装网站
     rewriteHost: true
 
-outbounds:                           # 出站端口设置
+resolver:
+  type: udp
+  udp:
+    addr: 8.8.8.8:53
+
+sniff:
+  enable: true
+  timeout: 2s
+  rewriteDomain: false
+  tcpPorts: 80,443,20000-40000
+  udpPorts: all
+
+outbounds:
+  - name: v4_prefer
+    type: direct
+    direct:
+      mode: 46
   - name: v4
     type: direct
     direct:
@@ -101,12 +117,17 @@ outbounds:                           # 出站端口设置
     type: direct
     direct:
       mode: 6
+  - name: sk5
+    type: socks5
+    socks5:
+      addr: ****:56789
+      username: admin
+      password: *****
 
 acl:
-  inline:                            # 内置出站规则，从上到下优先出站
-   - v4(0.0.0.0/0)                   # v4 分流
-   - v6(::/0)                        # v6分流
-   - direct(all)                     # 其它直连出站
+  inline:
+   - sk5(geosite:youtube)
+   - v4_prefer(all)
 EOF
 
         # 提示用户完成 Hysteria 的配置
