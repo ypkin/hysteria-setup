@@ -117,16 +117,8 @@ outbounds:
     type: direct
     direct:
       mode: 6
-  - name: sk5
-    type: socks5
-    socks5:
-      addr: ****:56789
-      username: admin
-      password: *****
-
 acl:
   inline:
-   - sk5(geosite:youtube)
    - v4_prefer(all)
 EOF
 
