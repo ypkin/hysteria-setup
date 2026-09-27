@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # 颜色代码
-GREEN="\e[32m"   # 绿色
-PINK="\e[35m"    # 粉色
-RESET="\e[0m"    # 重置颜色
+GREEN="\e[32m"    # 绿色
+PINK="\e[35m"     # 粉色
+RESET="\e[0m"     # 重置颜色
 
 # 检测系统类型
 if ! grep -qE "(debian|ubuntu)" /etc/*release; then
@@ -13,10 +13,13 @@ fi
 
 # 安装必要组件
 echo -e "${GREEN}安装必要组件...${RESET}"
-if ! apt update -y && apt install -y curl socat wget; then
+if ! apt update -y && apt install -y curl socat wget cron; then
     echo -e "${PINK}安装组件失败。请检查网络连接或权限设置。${RESET}"
     exit 1
 fi
+
+systemctl enable cron 2>/dev/null || systemctl enable crond 2>/dev/null
+systemctl start cron 2>/dev/null || systemctl start crond 2>/dev/null
 
 # 生成随机 Gmail 邮箱地址
 generate_random_email() {
@@ -31,6 +34,60 @@ generate_random_email() {
 
 random_email=$(generate_random_email)
 
+# 自动更新任务管理函数
+manage_auto_update() {
+    local cron_file="/etc/cron.d/hy2_autoupdate"
+    echo -e "${GREEN}--- 自动更新管理 ---${RESET}"
+    echo -e "${GREEN}1) 开启每周自动更新 (每周日凌晨 04:00 执行)${RESET}"
+    echo -e "${GREEN}2) 开启每日自动更新 (每天凌晨 04:00 执行)${RESET}"
+    echo -e "${GREEN}3) 关闭自动更新${RESET}"
+    echo -e "${GREEN}4) 查看当前自动更新状态${RESET}"
+    echo -e "${GREEN}0) 返回主菜单${RESET}"
+    read -p "$(echo -e "${PINK}请选择 (0-4): ${RESET}")" auto_opt
+
+    case $auto_opt in
+        1)
+            cat > "$cron_file" <<'EOF'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+0 4 * * 0 root bash <(curl -fsSL https://get.hy2.sh/) >/dev/null 2>&1 && systemctl restart hysteria-server.service
+EOF
+            chmod 644 "$cron_file"
+            systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null
+            echo -e "${GREEN}已成功开启！每周日凌晨 04:00 自动检查更新并重启服务。${RESET}"
+            ;;
+        2)
+            cat > "$cron_file" <<'EOF'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+0 4 * * * root bash <(curl -fsSL https://get.hy2.sh/) >/dev/null 2>&1 && systemctl restart hysteria-server.service
+EOF
+            chmod 644 "$cron_file"
+            systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null
+            echo -e "${GREEN}已成功开启！每天凌晨 04:00 自动检查更新并重启服务。${RESET}"
+            ;;
+        3)
+            if [ -f "$cron_file" ]; then
+                rm -f "$cron_file"
+                echo -e "${GREEN}已成功移除自动更新任务！${RESET}"
+            else
+                echo -e "${PINK}未发现自动更新任务，无需移除。${RESET}"
+            fi
+            ;;
+        4)
+            if [ -f "$cron_file" ]; then
+                echo -e "${GREEN}当前已配置自动更新任务：${RESET}"
+                cat "$cron_file"
+            else
+                echo -e "${PINK}当前未开启自动更新任务。${RESET}"
+            fi
+            ;;
+        *)
+            return
+            ;;
+    esac
+}
+
 # 选择操作
 while true; do
     echo -e "${GREEN}请选择操作:${RESET}"
@@ -42,10 +99,12 @@ while true; do
     echo -e "${GREEN}6) 停止 Hysteria${RESET}"
     echo -e "${GREEN}7) 查看 Hysteria 日志${RESET}"
     echo -e "${GREEN}8) 卸载 Hysteria${RESET}"
-    echo -e "${GREEN}9) 退出${RESET}"
+    echo -e "${GREEN}9) 配置自动更新任务 (Cron)${RESET}"
+    echo -e "${GREEN}10) 立即手动检查并更新主程序${RESET}"
+    echo -e "${GREEN}11) 退出${RESET}"
 
     # 提示用户输入选项
-    read -p "$(echo -e "${PINK}请输入选项 (1-9): ${RESET}")" option
+    read -p "$(echo -e "${PINK}请输入选项 (1-11): ${RESET}")" option
 
     if [[ $option -eq 1 ]]; then
         # 提示用户输入解析好的域名和自定义端口
@@ -77,9 +136,9 @@ while true; do
         cat > /etc/hysteria/config.yaml <<EOF
 listen: :$port                        # 端口自定义
 
-acme:                                # 域名证书 
+acme:                                 # 域名证书 
   domains:
-    - $domain                        # 用户输入的解析好的域名
+    - $domain                         # 用户输入的解析好的域名
   email: $random_email                # 随机生成的邮箱地址
 
 auth:
@@ -89,7 +148,7 @@ auth:
 masquerade:
   type: proxy
   proxy:
-    url: https://bing.com            # 伪装网站
+    url: https://bing.com             # 伪装网站
     rewriteHost: true
 
 resolver:
@@ -180,6 +239,15 @@ EOF
 
         echo -e "${GREEN}端口跳跃规则已成功设置，iptables 服务已重启。${RESET}"
 
+        # 默认自动配置一个每周自动更新定时任务
+        cat > /etc/cron.d/hy2_autoupdate <<'EOF'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+0 4 * * 0 root bash <(curl -fsSL https://get.hy2.sh/) >/dev/null 2>&1 && systemctl restart hysteria-server.service
+EOF
+        chmod 644 /etc/cron.d/hy2_autoupdate
+        echo -e "${GREEN}已默认添加每周日凌晨 04:00 的自动静默更新任务。${RESET}"
+
         # 启动 Hysteria 服务
         echo -e "${GREEN}启动 hysteria-server 服务...${RESET}"
         if ! systemctl start hysteria-server.service; then
@@ -248,17 +316,38 @@ EOF
         systemctl disable hysteria-server.service
         apt remove --purge -y hysteria
         rm -rf /etc/hysteria/
-        echo -e "${GREEN}Hysteria 已成功卸载！${RESET}"
+        rm -f /etc/cron.d/hy2_autoupdate
+        echo -e "${GREEN}Hysteria 及自动更新任务已成功卸载！${RESET}"
         echo -e "${GREEN}按任意键返回主菜单...${RESET}"
         read -n 1 -s
         continue
 
     elif [[ $option -eq 9 ]]; then
+        manage_auto_update
+        echo -e "${GREEN}按任意键返回主菜单...${RESET}"
+        read -n 1 -s
+        continue
+
+    elif [[ $option -eq 10 ]]; then
+        echo -e "${GREEN}正在检查并更新 Hysteria 2 主程序...${RESET}"
+        if bash <(curl -fsSL https://get.hy2.sh/); then
+            echo -e "${GREEN}主程序更新成功，正在重启服务...${RESET}"
+            systemctl restart hysteria-server.service
+            echo -e "${GREEN}Hysteria 2 服务已重启！当前版本：${RESET}"
+            hysteria version 2>/dev/null || true
+        else
+            echo -e "${PINK}更新失败，请检查网络连接。${RESET}"
+        fi
+        echo -e "${GREEN}按任意键返回主菜单...${RESET}"
+        read -n 1 -s
+        continue
+
+    elif [[ $option -eq 11 ]]; then
         echo -e "${GREEN}退出...${RESET}"
         exit 0
 
     else
-        echo -e "${PINK}无效选项，请选择 1 到 9 的数字。${RESET}"
+        echo -e "${PINK}无效选项，请选择 1 到 11 的数字。${RESET}"
         echo -e "${GREEN}按任意键返回主菜单...${RESET}"
         read -n 1 -s
         continue
