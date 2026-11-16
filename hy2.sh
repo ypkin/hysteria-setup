@@ -13,7 +13,7 @@ fi
 
 # 安装必要组件
 echo -e "${GREEN}安装必要组件...${RESET}"
-if ! apt update -y && apt install -y curl socat wget cron; then
+if ! apt update -y || ! apt install -y curl socat wget cron; then
     echo -e "${PINK}安装组件失败。请检查网络连接或权限设置。${RESET}"
     exit 1
 fi
@@ -233,6 +233,14 @@ EOF
         echo "保存 iptables 规则..."
         netfilter-persistent save
 
+        # 记录端口跳跃参数，供卸载时精确清除规则
+        cat > /etc/hysteria/hopping.conf <<EOF
+NIC=$NIC
+START_PORT=$START_PORT
+END_PORT=$END_PORT
+TARGET_PORT=$TARGET_PORT
+EOF
+
         # 重启 iptables 服务
         echo "重启 iptables 服务..."
         systemctl restart netfilter-persistent
@@ -314,10 +322,30 @@ EOF
         echo -e "${GREEN}卸载 Hysteria...${RESET}"
         systemctl stop hysteria-server.service
         systemctl disable hysteria-server.service
+
+        # 清除端口跳跃 iptables 规则（v4+v6）
+        echo "清除端口跳跃规则..."
+        if [ -f /etc/hysteria/hopping.conf ]; then
+            # 有安装时记录的参数，精确删除
+            . /etc/hysteria/hopping.conf
+            iptables -t nat -D PREROUTING -i "$NIC" -p udp --dport "$START_PORT:$END_PORT" -j DNAT --to-destination :"$TARGET_PORT" 2>/dev/null
+            ip6tables -t nat -D PREROUTING -i "$NIC" -p udp --dport "$START_PORT:$END_PORT" -j DNAT --to-destination :"$TARGET_PORT" 2>/dev/null
+        else
+            # 旧版本未记录参数：按特征扫描现行 DNAT 跳跃规则逐条删除
+            for cmd in iptables ip6tables; do
+                $cmd -t nat -S PREROUTING 2>/dev/null | grep -E '^-A PREROUTING .*-p udp .*--dport [0-9]+:[0-9]+ .*DNAT' | while read -r rule; do
+                    eval "$cmd -t nat $(echo "$rule" | sed 's/^-A /-D /')"
+                done
+            done
+        fi
+        if command -v netfilter-persistent >/dev/null 2>&1; then
+            netfilter-persistent save
+        fi
+
         apt remove --purge -y hysteria
         rm -rf /etc/hysteria/
         rm -f /etc/cron.d/hy2_autoupdate
-        echo -e "${GREEN}Hysteria 及自动更新任务已成功卸载！${RESET}"
+        echo -e "${GREEN}Hysteria、端口跳跃规则及自动更新任务已成功卸载！${RESET}"
         echo -e "${GREEN}按任意键返回主菜单...${RESET}"
         read -n 1 -s
         continue
