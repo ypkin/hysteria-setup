@@ -243,10 +243,10 @@ EOF
         cat > /etc/cron.d/hy2_autoupdate <<'EOF'
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-0 4 * * 0 root bash <(curl -fsSL https://get.hy2.sh/) >/dev/null 2>&1 && systemctl restart hysteria-server.service
+0 4 * * * root bash <(curl -fsSL https://get.hy2.sh/) >/dev/null 2>&1 && systemctl restart hysteria-server.service
 EOF
         chmod 644 /etc/cron.d/hy2_autoupdate
-        echo -e "${GREEN}已默认添加每周日凌晨 04:00 的自动静默更新任务。${RESET}"
+        echo -e "${GREEN}已默认添加每天凌晨 04:00 的自动静默更新任务。${RESET}"
 
         # 启动 Hysteria 服务
         echo -e "${GREEN}启动 hysteria-server 服务...${RESET}"
